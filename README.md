@@ -73,13 +73,6 @@ https://calcury.github.io/deeptalk/
 
 页面显示的价格是根据 API 响应中的 token usage 和代码内置估算费率计算的，不代表所有供应商的实时价格。切换模型或供应商后，请在用量页面核对对应费率。
 
-## 技术栈
-
-- React 18
-- Vite 6
-- lucide-react
-- GitHub Actions / GitHub Pages
-
 ## License
 
 [MIT](LICENSE)
