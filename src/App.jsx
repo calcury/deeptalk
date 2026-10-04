@@ -1,31 +1,369 @@
-﻿import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {BookOpen, Bot, Check, ChevronDown, CircleHelp, Coins, Copy, Flame, Gauge, Languages, MessageCircle, MoreHorizontal, Plus, Send, Settings2, Sparkles, Trash2, UserRound, X, Zap} from 'lucide-react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Menu, Plus } from 'lucide-react';
+import Sidebar from './components/Sidebar.jsx';
+import Chat from './components/Chat.jsx';
+import NewConversationModal from './components/NewConversationModal.jsx';
+import SettingsModal from './components/SettingsModal.jsx';
+import { Usage, Words } from './components/Pages.jsx';
+import { accountDefaults, correctionsEnabled, costOf, profileDefaults, settingsDefaults, usageDefaults } from './lib/config.js';
+import { KEYS, loadObject, loadRaw, save } from './lib/storage.js';
+import { dayKey, makeConversation, newProfile, normaliseConversations, now, peakMultiplier, pickFocusWords, pruneHistory, usesWord } from './lib/utils.js';
+import { ask, generateStart } from './lib/api.js';
 
-const starter = [{role:'assistant', text:'Hey! I’m Alex 👋 Your English buddy. What’s on your mind today?', time:'09:41'}];
-const defaults = {role:'classmate', scene:'daily', tone:'casual', reasoning:'low', length:'short'};
-const apiDefaults = {endpoint:'https://api.deepseek.com', model:'deepseek-chat', key:''};
-const makeConversation = (profile=defaults, index=1) => ({id:Date.now()+index, title:'Weekend plans', messages:starter.map(message=>({...message})), profile, createdAt:new Date().toISOString()});
-const roles = {classmate:'Classmate', teacher:'Teacher', friend:'Friend'};
-const scenes = {daily:'Daily chat', topic:'Find a topic', group:'Group project', discuss:'Discuss a question'};
+export default function App() {
+  const [tab, setTab] = useState('chat');
+  const [settings, setSettings] = useState(() => loadObject(KEYS.settings, settingsDefaults));
+  const [account, setAccount] = useState(() => loadObject(KEYS.account, accountDefaults));
+  const [conversations, setConversations] = useState(() => {
+    const stored = loadRaw(KEYS.conversations, null);
+    return Array.isArray(stored) && stored.length ? normaliseConversations(stored) : [makeConversation(profileDefaults, 'Alex', 0)];
+  });
+  const [currentId, setCurrentId] = useState(() => loadRaw(KEYS.current, null));
+  const [usage, setUsage] = useState(() => ({ ...usageDefaults, ...(loadRaw(KEYS.usage, null) || {}) }));
+  const [words, setWords] = useState(() => loadRaw(KEYS.words, []) || []);
+  const [lastProfile, setLastProfile] = useState(() => ({ ...profileDefaults, ...(loadRaw(KEYS.lastProfile, null) || {}) }));
 
-function App(){
- const [tab,setTab]=useState('chat'); const [conversations,setConversations]=useState(()=>JSON.parse(localStorage.getItem('deeptalk-conversations')||'null')||[makeConversation()]); const [currentId,setCurrentId]=useState(()=>JSON.parse(localStorage.getItem('deeptalk-current')||'null')); const [input,setInput]=useState(''); const [loading,setLoading]=useState(false); const [settings,setSettings]=useState(()=>JSON.parse(localStorage.getItem('deeptalk-settings')||'null')||apiDefaults); const [showSettings,setShowSettings]=useState(false); const [showNewConversation,setShowNewConversation]=useState(false); const [usage,setUsage]=useState(()=>JSON.parse(localStorage.getItem('deeptalk-usage')||'null')||{input:0,output:0,cost:0,requests:0}); const [words,setWords]=useState(()=>JSON.parse(localStorage.getItem('deeptalk-words')||'[]')); const [selected,setSelected]=useState(null); const [toast,setToast]=useState(''); const requestId=useRef(0); const activeId=currentId||conversations[0]?.id; const activeConversation=conversations.find(conversation=>conversation.id===activeId)||conversations[0]; const messages=activeConversation?.messages||[]; const profile=activeConversation?.profile||defaults; const setMessages=updater=>setConversations(all=>all.map(conversation=>conversation.id===activeId?{...conversation,messages:typeof updater==='function'?updater(conversation.messages):updater}:conversation));
- useEffect(()=>localStorage.setItem('deeptalk-conversations',JSON.stringify(conversations)),[conversations]); useEffect(()=>localStorage.setItem('deeptalk-current',JSON.stringify(activeId)),[activeId]); useEffect(()=>localStorage.setItem('deeptalk-settings',JSON.stringify(settings)),[settings]); useEffect(()=>localStorage.setItem('deeptalk-usage',JSON.stringify(usage)),[usage]); useEffect(()=>localStorage.setItem('deeptalk-words',JSON.stringify(words)),[words]);
- const todayCost=usage.cost; const startNewConversation=(newProfile)=>{requestId.current+=1; setLoading(false); setInput(''); setSelected(null); const conversation=makeConversation(newProfile,conversations.length+1); setConversations(all=>[conversation,...all]); setCurrentId(conversation.id); setTab('chat'); setShowNewConversation(false); setToast('New conversation created'); setTimeout(()=>setToast(''),1800)}; const switchConversation=id=>{requestId.current+=1; setLoading(false); setInput(''); setSelected(null); setCurrentId(id); setTab('chat')}; const send=async()=>{if(!input.trim()||loading)return; const text=input.trim(); setInput(''); const request=++requestId.current; setMessages(m=>[...m,{role:'user',text,time:now()}]); setLoading(true); try{const reply=await ask(text); if(request!==requestId.current)return; setMessages(m=>[...m,{role:'assistant',text:reply,time:now()}]);}catch(e){if(request===requestId.current)setMessages(m=>[...m,{role:'assistant',text:`I couldn't connect just now. ${e.message||'Check your API settings and try again.'}`,time:now(),error:true}]);}finally{if(request===requestId.current)setLoading(false)}};
- const ask=async(text)=>{if(!settings.key){await wait(700); return localReply(text)}; const history=[...messages,{role:'user',text}].slice(-18).map(m=>({role:m.role,content:m.text})); const system=buildPrompt(profile,words); const res=await fetch(settings.endpoint.replace(/\/$/,'')+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${settings.key}`},body:JSON.stringify({model:settings.model,messages:[{role:'system',content:system},...history],temperature:.7,stream:false})}); if(!res.ok)throw new Error(`API ${res.status}`); const data=await res.json(); const u=data.usage||{}; const cost=((u.prompt_tokens||0)*0.00000027+(u.completion_tokens||0)*0.0000011); setUsage(x=>({input:x.input+(u.prompt_tokens||0),output:x.output+(u.completion_tokens||0),cost:x.cost+cost,requests:x.requests+1})); return data.choices?.[0]?.message?.content||'Could you say that another way?'};
- const localReply=(text)=>{const q=text.toLowerCase(); if(q.includes('hello')||q.includes('hi'))return 'Hey! Nice to see you. How’s your day going?'; if(q.includes('study')||q.includes('school'))return 'That sounds productive! What are you working on right now?'; return `That’s interesting! Tell me more about “${text.slice(0,42)}${text.length>42?'…':''}”.`};
- const addWord=(word)=>{if(!word)return; if(!words.some(w=>w.word===word))setWords(w=>[{word,context:messages.at(-1)?.text||'',count:0,added:new Date().toISOString()},...w]); setToast('Added to word bank'); setSelected(null); setTimeout(()=>setToast(''),1800)};
- return <div className="app"><aside className="sidebar"><div className="brand"><div className="brand-mark"><Sparkles size={18}/></div><span>deeptalk</span><span className="beta">BETA</span></div><button className="new-chat" onClick={()=>setShowNewConversation(true)}><Plus size={17}/> New conversation <span>⌘ K</span></button><div className="side-label">Workspace</div><nav><button className={tab==='chat'?'active':''} onClick={()=>setTab('chat')}><MessageCircle size={17}/>Chat</button><button className={tab==='correction'?'active':''} onClick={()=>setTab('correction')}><Check size={17}/>Corrections<span className="badge">2</span></button><button className={tab==='words'?'active':''} onClick={()=>setTab('words')}><BookOpen size={17}/>Word bank<span className="badge pale">{words.length||8}</span></button><button className={tab==='usage'?'active':''} onClick={()=>setTab('usage')}><Coins size={17}/>Usage & pricing</button></nav><div className="side-label recent">Conversations</div><div className="conversation-list">{conversations.map(conversation=><button key={conversation.id} className={"conversation-item "+(conversation.id===activeId?"selected":"")} onClick={()=>switchConversation(conversation.id)}><span className="dot"></span><div><b>{conversation.title}</b><small>{new Date(conversation.createdAt).toLocaleDateString()}</small></div><MoreHorizontal size={16}/></button>)}</div><div className="sidebar-bottom"><button className="user"><span className="avatar">C</span><span><b>Calcury</b><small>Free plan</small></span><ChevronDown size={15}/></button></div></aside><main className="main"><header><div><div className="eyebrow">{tab==='chat'?'CONVERSATION':'WORKSPACE'}</div><h1>{tab==='chat'?'Weekend plans':tab==='correction'?'Corrections':tab==='words'?'Word bank':'Usage & pricing'}</h1></div><div className="header-actions"><button className="icon-btn" title="Settings" onClick={()=>setShowSettings(true)}><Settings2 size={18}/></button><button className="avatar small">C</button></div></header>{tab==='chat'&&<Chat key={activeId} messages={messages} input={input} setInput={setInput} send={send} loading={loading} selected={selected} setSelected={setSelected} addWord={addWord} words={words}/>} {tab==='correction'&&<Corrections messages={messages}/>} {tab==='words'&&<Words words={words} addWord={addWord} setWords={setWords}/>} {tab==='usage'&&<Usage usage={usage} setUsage={setUsage}/>} </main>{showSettings&&<Settings settings={settings} setSettings={setSettings} close={()=>setShowSettings(false)}/>} {toast&&<div className="toast"><Check size={15}/>{toast}</div>}</div>
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [toast, setToast] = useState('');
+  const [showNew, setShowNew] = useState(false);
+  const [settingsSection, setSettingsSection] = useState(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [startingId, setStartingId] = useState(null);
+  // Text of the answer currently being streamed. Kept out of `conversations` so a token never
+  // triggers a localStorage write — it is committed once the stream finishes.
+  const [streaming, setStreaming] = useState('');
+  // Message indices whose correction block is unfolded. Empty on load, so a second
+  // visit shows the folded "Corrections & Polish" chip while the data stays cached.
+  const [openCorrections, setOpenCorrections] = useState([]);
+
+  const requestId = useRef(0);
+  const toastTimer = useRef(null);
+
+  // Fall back to a real conversation when the stored pointer is stale (cleared storage, other tab, migration).
+  const activeId = currentId && conversations.some(c => c.id === currentId) ? currentId : conversations[0]?.id;
+  const active = useMemo(() => conversations.find(c => c.id === activeId) || conversations[0], [conversations, activeId]);
+  const messages = active?.messages || [];
+  const profile = active?.profile || profileDefaults;
+  // "Off" means no correction pass at all: shorter prompt, no JSON mode, fewer tokens.
+  const corrections = correctionsEnabled(settings);
+
+  useEffect(() => save(KEYS.settings, settings), [settings]);
+  useEffect(() => save(KEYS.account, account), [account]);
+  useEffect(() => save(KEYS.conversations, conversations), [conversations]);
+  useEffect(() => save(KEYS.current, activeId), [activeId]);
+  useEffect(() => save(KEYS.usage, usage), [usage]);
+  useEffect(() => save(KEYS.words, words), [words]);
+  useEffect(() => save(KEYS.lastProfile, lastProfile), [lastProfile]);
+
+  const notify = useCallback(message => {
+    setToast(message);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 1800);
+  }, []);
+
+  const resetSession = useCallback(() => {
+    requestId.current += 1;
+    setLoading(false);
+    setInput('');
+    setSelected(null);
+    setOpenCorrections([]);
+    setStreaming('');
+  }, []);
+
+  const deleteMessage = useCallback(
+    index => {
+      setConversations(all =>
+        all.map(c => (c.id === activeId ? { ...c, messages: c.messages.filter((_, i) => i !== index) } : c))
+      );
+      // Indices above the removed message shift down by one.
+      setOpenCorrections(current => current.filter(i => i !== index).map(i => (i > index ? i - 1 : i)));
+    },
+    [activeId]
+  );
+
+  const toggleCorrection = useCallback(index => {
+    setOpenCorrections(current => (current.includes(index) ? current.filter(i => i !== index) : [...current, index]));
+  }, []);
+
+  const patchConversation = useCallback((id, patch) => {
+    setConversations(all => all.map(c => (c.id === id ? { ...c, ...patch } : c)));
+  }, []);
+
+  const startConversation = async nextProfile => {
+    resetSession();
+    // The opening line and the chat name come from the model, so the conversation starts empty.
+    const conversation = { ...makeConversation(nextProfile, settings.personaName, conversations.length + 1), messages: [], title: 'New conversation' };
+    setLastProfile(nextProfile);
+    setConversations(all => [conversation, ...all]);
+    setCurrentId(conversation.id);
+    setTab('chat');
+    setShowNew(false);
+    setMobileOpen(false);
+    setStartingId(conversation.id);
+    try {
+      const { title, opener } = await generateStart({ profile: nextProfile, settings });
+      patchConversation(conversation.id, { title: title || 'New conversation', messages: [{ role: 'assistant', text: opener, time: now() }] });
+    } catch {
+      const fallback = makeConversation(nextProfile, settings.personaName, 1);
+      patchConversation(conversation.id, { title: fallback.title, messages: fallback.messages });
+      notify('Could not reach the model, started with a default opener');
+    } finally {
+      setStartingId(current => (current === conversation.id ? null : current));
+    }
+  };
+
+  const openConversation = id => {
+    resetSession();
+    setCurrentId(id);
+    setTab('chat');
+  };
+
+  const deleteConversation = id => {
+    requestId.current += 1;
+    setLoading(false);
+    setOpenCorrections([]);
+    const rest = conversations.filter(c => c.id !== id);
+    if (rest.length) {
+      setConversations(rest);
+      if (id === activeId) setCurrentId(rest[0].id);
+    } else {
+      const fresh = makeConversation(lastProfile, settings.personaName, 1);
+      setConversations([fresh]);
+      setCurrentId(fresh.id);
+    }
+    notify('Conversation deleted');
+  };
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput('');
+    const request = ++requestId.current;
+    const userIndex = messages.length;
+    const userMessage = { role: 'user', text, time: now() };
+    patchConversation(activeId, { messages: [...messages, userMessage] });
+    setLoading(true);
+    setStreaming('');
+    // Freshly drawn each turn: words used less often come up more often.
+    const focusWords = pickFocusWords(words);
+    try {
+      const { text: reply, correction } = await ask(text, {
+        settings,
+        profile,
+        messages,
+        words: focusWords,
+        corrections,
+        onUsage: u => recordUsage(u),
+        onDelta: partial => {
+          if (request === requestId.current) setStreaming(partial);
+        },
+        // The review often lands before the answer finishes typing — show it right away.
+        onCorrection: found => {
+          if (request !== requestId.current || !found) return;
+          patchConversation(activeId, { messages: [...messages, { ...userMessage, correction: found }] });
+          setOpenCorrections(current => (current.includes(userIndex) ? current : [...current, userIndex]));
+        }
+      });
+      if (request !== requestId.current) return;
+      // The review belongs to the learner's sentence, so it hangs under that bubble.
+      const turn = [
+        ...messages,
+        { ...userMessage, correction: correction || undefined },
+        { role: 'assistant', text: reply, time: now() }
+      ];
+      patchConversation(activeId, { messages: turn });
+      if (correction) setOpenCorrections(current => (current.includes(userIndex) ? current : [...current, userIndex]));
+      const used = focusWords.filter(w => usesWord(reply, w.word));
+      if (used.length) {
+        setWords(list => list.map(item => (used.some(u => u.word === item.word) ? { ...item, count: Math.min(10, (item.count || 0) + 1) } : item)));
+      }
+    } catch (e) {
+      if (request !== requestId.current) return;
+      patchConversation(activeId, {
+        messages: [
+          ...messages,
+          userMessage,
+          { role: 'assistant', text: `Couldn't get a reply — ${e.message || 'check your API settings and try again.'}`, time: now(), error: true }
+        ]
+      });
+    } finally {
+      if (request === requestId.current) {
+        setLoading(false);
+        setStreaming('');
+      }
+    }
+  };
+
+  const recordUsage = useCallback(u => {
+    const multiplier = u.multiplier || peakMultiplier();
+    const cost = costOf({ input: u.input, output: u.output, cacheHit: u.cacheHit }, multiplier);
+    setUsage(prev => {
+      const key = dayKey();
+      const day = prev.history?.[key] || { input: 0, output: 0, cacheHit: 0, cost: 0, requests: 0 };
+      return {
+        input: (prev.input || 0) + u.input,
+        output: (prev.output || 0) + u.output,
+        cacheHit: (prev.cacheHit || 0) + u.cacheHit,
+        requests: (prev.requests || 0) + 1,
+        cost: (prev.cost || 0) + cost,
+        history: pruneHistory({
+          ...(prev.history || {}),
+          [key]: {
+            input: day.input + u.input,
+            output: day.output + u.output,
+            cacheHit: day.cacheHit + u.cacheHit,
+            cost: day.cost + cost,
+            requests: day.requests + 1
+          }
+        })
+      };
+    });
+  }, []);
+
+  const addWord = (word, context) => {
+    if (!word) return;
+    const trimmed = word.trim();
+    if (!trimmed) return;
+    let added = false;
+    setWords(current => {
+      if (current.some(w => w.word.toLowerCase() === trimmed.toLowerCase())) return current;
+      added = true;
+      return [{ word: trimmed, context: context?.trim() || messages.at(-1)?.text || '', count: 0, added: new Date().toISOString() }, ...current];
+    });
+    notify(added ? 'Added to word bank' : 'Already in your bank');
+  };
+
+  const removeWord = word => setWords(current => current.filter(w => w.word !== word));
+
+  const runDataAction = action => {
+    if (action === 'conversations') {
+      requestId.current += 1;
+      setLoading(false);
+      setOpenCorrections([]);
+      const fresh = makeConversation(lastProfile, settings.personaName, 1);
+      setConversations([fresh]);
+      setCurrentId(fresh.id);
+      notify('Conversations cleared');
+    }
+    if (action === 'words') {
+      setWords([]);
+      notify('Word bank cleared');
+    }
+    if (action === 'usage') {
+      setUsage({ ...usageDefaults, history: {} });
+      notify('Usage reset');
+    }
+  };
+
+  useEffect(() => {
+    const onKey = e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowNew(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  return (
+    <div className={'app' + (settings.sidebarCollapsed ? ' collapsed' : '') + (mobileOpen ? ' mobile-open' : '')}>
+      <Sidebar
+        tab={tab}
+        setTab={setTab}
+        conversations={conversations}
+        activeId={activeId}
+        onSelect={openConversation}
+        onDelete={deleteConversation}
+        onNew={() => setShowNew(true)}
+        account={account}
+        openSettings={section => setSettingsSection(section)}
+        collapsed={settings.sidebarCollapsed}
+        toggleCollapse={() => setSettings(s => ({ ...s, sidebarCollapsed: !s.sidebarCollapsed }))}
+        mobileOpen={mobileOpen}
+        closeMobile={() => setMobileOpen(false)}
+        counts={{ words: words.length || 0 }}
+      />
+
+      {mobileOpen && <div className="scrim" onClick={() => setMobileOpen(false)} />}
+
+      <main className="main">
+        <header>
+          <button className="icon-btn menu-btn" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+            <Menu size={18} />
+          </button>
+          {/* Only the chat view owns the top title — workspace pages carry their own heading. */}
+          {tab === 'chat' && (
+            <div className="header-title">
+              <p className="eyebrow">CONVERSATION</p>
+              <h1>{active?.title || 'Conversation'}</h1>
+            </div>
+          )}
+          <div className="header-actions">
+            <button className="icon-btn accent" onClick={() => setShowNew(true)} title="New conversation" aria-label="New conversation">
+              <Plus size={18} />
+            </button>
+          </div>
+        </header>
+
+        {tab === 'chat' && (
+          <Chat
+            key={activeId}
+            messages={messages}
+            input={input}
+            setInput={setInput}
+            send={send}
+            loading={loading}
+            selected={selected}
+            setSelected={setSelected}
+            addWord={addWord}
+            words={words}
+            personaName={settings.personaName || 'Alex'}
+            subtitle={profile.topic || `${profile.role} · ${profile.scene}`}
+            enterToSend={settings.enterToSend}
+            starting={startingId === activeId}
+            streamingText={streaming}
+            openCorrections={openCorrections}
+            toggleCorrection={toggleCorrection}
+            onDeleteMessage={deleteMessage}
+          />
+        )}
+        {tab === 'words' && <Words words={words} addWord={addWord} removeWord={removeWord} setWords={setWords} />}
+        {tab === 'usage' && (
+          <Usage
+            usage={usage}
+            setUsage={setUsage}
+            currency={settings.currency}
+            setCurrency={code => setSettings(s => ({ ...s, currency: code }))}
+          />
+        )}
+      </main>
+
+      {showNew && (
+        <NewConversationModal initialProfile={lastProfile ? { ...lastProfile, topic: '' } : newProfile(settings)} onClose={() => setShowNew(false)} onCreate={startConversation} />
+      )}
+
+      {settingsSection && (
+        <SettingsModal
+          settings={settings}
+          setSettings={setSettings}
+          account={account}
+          setAccount={setAccount}
+          initialSection={settingsSection}
+          onClose={() => setSettingsSection(null)}
+          onDataAction={runDataAction}
+          notify={notify}
+        />
+      )}
+
+      {toast && (
+        <div className="toast">
+          <Check size={15} />
+          {toast}
+        </div>
+      )}
+    </div>
+  );
 }
-function Chat({messages,input,setInput,send,loading,selected,setSelected,addWord,words}){return <div className="chat-layout"><div className="chat-head"><div className="persona"><div className="persona-icon"><Bot size={20}/></div><div><b>Alex <span className="online"></span></b><small>Foreign classmate · English</small></div></div><div className="session-meta"><span><Flame size={14}/> 4 day streak</span><span className="token-pill"><Zap size={13}/> {words.length} words in focus</span></div></div><div className="messages">{messages.map((m,i)=><Message key={i} m={m} onWord={(w)=>setSelected({word:w,i})} selected={selected?.i===i}/>) }{loading&&<div className="message assistant"><div className="bubble typing"><i></i><i></i><i></i></div></div>}</div><div className="composer-wrap"><div className="hint-row"><span><Sparkles size={13}/> AI is ready</span><span>Enter to send · Shift + Enter for new line</span></div><div className="composer"><textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}} placeholder="Say something in English..."/><button className="send" onClick={send} disabled={!input.trim()||loading}><Send size={18}/></button></div></div></div>}
-function Message({m,onWord,selected}){return <div className={'message '+m.role}><div className="msg-avatar">{m.role==='assistant'?<Bot size={16}/>:<UserRound size={15}/>}</div><div className="msg-content"><div className="bubble">{m.text.split(/(\s+)/).map((part,i)=>/^\w+$/.test(part)?<span key={i} className={selected?'word':''} onContextMenu={e=>{e.preventDefault();onWord(part)}} onDoubleClick={()=>onWord(part)}>{part}</span>:part)}</div>{m.role==='assistant'&&<div className="message-tools"><button><Copy size={13}/> Copy</button><button><Languages size={13}/> Translate</button></div>}<small className="time">{m.time}</small></div></div>}
-function Corrections({messages}){const users=messages.filter(m=>m.role==='user');return <section className="page-section"><div className="section-intro"><div><p className="eyebrow">LAST SESSION</p><h2>Small tweaks, big progress.</h2><p>Gentle feedback from your conversations. Keep it natural.</p></div><div className="score"><strong>86</strong><span>clarity score</span></div></div>{users.length?users.map((m,i)=><div className="correction-card" key={i}><div className="quote">“{m.text}”</div><div className="fix"><span className="tag grammar">GRAMMAR</span><div><b>Try this instead</b><p>{m.text.length<20?m.text+' — sounds good!':'A more natural way to say this would be: <em>'+m.text+'</em>'}</p></div></div></div>):<Empty icon={<Check/>} title="No corrections yet" text="Start a conversation and your feedback will appear here."/>}</section>}
-function Words({words,addWord,setWords}){const demo=[{word:'productive',context:'That sounds productive! What are you working on?',count:3},{word:'awkward',context:'It felt a little awkward at first, but we laughed it off.',count:7},{word:'figure out',context:'We’ll figure out the details together.',count:2}]; const list=words.length?words:demo;return <section className="page-section"><div className="section-intro"><div><p className="eyebrow">YOUR VOCABULARY</p><h2>Words worth keeping.</h2><p>Use them in chat to move each word toward mastery.</p></div><button className="outline-btn" onClick={()=>setWords([])}><Trash2 size={15}/> Clear progress</button></div><div className="word-grid">{list.map((w,i)=><div className="word-card" key={w.word}><div className="word-top"><div><h3>{w.word}</h3><span className="phonetic">/ {i%2?'ˈɔːkwəd':'prəˈdʌktɪv'} /</span></div><span className="more">···</span></div><p>“{w.context}”</p><div className="progress-row"><span>Progress</span><b>{w.count||0}/10</b></div><div className="progress"><i style={{width:`${Math.min(100,(w.count||0)*10)}%`}}></i></div><div className="word-foot"><span><Flame size={13}/> {w.count||0} uses</span><button onClick={()=>addWord(w.word)}>Practice <ChevronDown size={13}/></button></div></div>)}</div></section>}
-function Usage({usage,setUsage}){return <section className="page-section"><div className="section-intro"><div><p className="eyebrow">TRANSPARENCY FIRST</p><h2>Usage & pricing</h2><p>Track exactly what your conversations cost. Prices are estimates based on your provider.</p></div><button className="outline-btn" onClick={()=>setUsage({input:0,output:0,cost:0,requests:0})}>Reset usage</button></div><div className="usage-hero"><div><span>Estimated total</span><strong>${usage.cost.toFixed(4)}</strong><small>This month · USD</small></div><div className="usage-stat"><Gauge size={19}/><b>{(usage.input+usage.output).toLocaleString()}</b><span>tokens</span></div><div className="usage-stat"><MessageCircle size={19}/><b>{usage.requests}</b><span>requests</span></div></div><div className="table-card"><div className="table-title"><b>Today</b><span>DeepSeek V4 Flash · estimated rates</span></div><div className="table-row head"><span>Metric</span><span>Tokens</span><span>Rate</span><span>Cost</span></div><div className="table-row"><span>Input tokens</span><span>{usage.input.toLocaleString()}</span><span>$0.27 / M</span><b>${(usage.input*.00000027).toFixed(4)}</b></div><div className="table-row"><span>Output tokens</span><span>{usage.output.toLocaleString()}</span><span>$1.10 / M</span><b>${(usage.output*.0000011).toFixed(4)}</b></div></div><div className="note"><CircleHelp size={16}/><span>Set your own provider and model in <b>Settings</b>. API keys stay in your browser and are never uploaded by deeptalk.</span></div></section>}
-function NewConversation({onCreate,close}){const [profile,setProfile]=useState(defaults); const update=(key,value)=>setProfile(current=>({...current,[key]:value})); return <div className="modal-backdrop" onClick={close}><div className="modal" onClick={event=>event.stopPropagation()}><div className="modal-head"><div><p className="eyebrow">NEW CONVERSATION</p><h2>Choose your roleplay.</h2></div><button className="icon-btn" onClick={close}><X size={18}/></button></div><p className="modal-description">Set the character and speaking style for this chat. Each conversation keeps its own roleplay settings and history.</p><div className="two-col"><label>Role<select value={profile.role} onChange={event=>update('role',event.target.value)}>{Object.entries(roles).map(([key,value])=><option key={key} value={key}>{value}</option>)}</select></label><label>Scene<select value={profile.scene} onChange={event=>update('scene',event.target.value)}>{Object.entries(scenes).map(([key,value])=><option key={key} value={key}>{value}</option>)}</select></label></div><div className="two-col"><label>Speaking tone<select value={profile.tone} onChange={event=>update('tone',event.target.value)}><option value="casual">Casual & natural</option><option value="balanced">Balanced</option><option value="formal">Formal</option></select></label><label>Reply length<select value={profile.length} onChange={event=>update('length',event.target.value)}><option value="short">Short (1–3 sentences)</option><option value="medium">Medium</option><option value="long">Detailed</option></select></label></div><label>Reasoning level<select value={profile.reasoning} onChange={event=>update('reasoning',event.target.value)}><option value="no">No extra reasoning</option><option value="low">Low</option><option value="high">High</option><option value="max">Max</option></select></label><button className="save-btn" onClick={()=>onCreate(profile)}>Create conversation <Plus size={16}/></button></div></div>}function Settings({settings,setSettings,close}){const update=(k,v)=>setSettings(s=>({...s,[k]:v}));return <div className="modal-backdrop" onClick={close}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><p className="eyebrow">CONFIGURATION</p><h2>Make it yours.</h2></div><button className="icon-btn" onClick={close}><X size={18}/></button></div><label>API endpoint<input value={settings.endpoint} onChange={e=>update('endpoint',e.target.value)}/></label><div className="two-col"><label>Model<input value={settings.model} onChange={e=>update('model',e.target.value)}/></label><label>API key<input type="password" placeholder="sk-..." value={settings.key} onChange={e=>update('key',e.target.value)}/></label></div><div className="two-col"><label>Role<select value={settings.role} onChange={e=>update('role',e.target.value)}>{Object.entries(roles).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label><label>Scene<select value={settings.scene} onChange={e=>update('scene',e.target.value)}>{Object.entries(scenes).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label></div><div className="setting-row"><div><b>Reply style</b><small>Natural, chatty, and concise</small></div><div className="segmented">{['casual','balanced','formal'].map(x=><button className={settings.tone===x?'selected':''} onClick={()=>update('tone',x)} key={x}>{x}</button>)}</div></div><div className="setting-row"><div><b>Reasoning level</b><small>Hidden from the conversation</small></div><div className="segmented">{['no','low','high','max'].map(x=><button className={settings.reasoning===x?'selected':''} onClick={()=>update('reasoning',x)} key={x}>{x}</button>)}</div></div><button className="save-btn" onClick={close}>Save settings <Check size={16}/></button></div></div>}
-function Empty({icon,title,text}){return <div className="empty">{icon}<h3>{title}</h3><p>{text}</p></div>}; const now=()=>new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); const wait=ms=>new Promise(r=>setTimeout(r,ms));
-function buildPrompt(s,words){return `You are ${roles[s.role]}, an English conversation partner. Scene: ${scenes[s.scene]}. Reply in ${s.tone} English, ${s.length==='short'?'1-3 short sentences':''}. Reasoning: ${s.reasoning}; never reveal internal reasoning. Be warm and natural. You may gently correct up to two issues in concise Chinese after your English reply. Use these focus words naturally when helpful, but reduce overuse as counts rise: ${words.map(w=>w.word+':'+w.count+'/10').join(', ')||'none'}.`}
-export default App;
-
-
-

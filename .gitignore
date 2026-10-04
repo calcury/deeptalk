@@ -23,3 +23,8 @@ npm-debug.log*
 
 # Local test coverage
 coverage/
+
+# Ignore agent logs
+.workbuddy/
+.claude/
+.codex/
