@@ -154,7 +154,6 @@ const COPY = {
       ctaButton: '打开 DeepTalk'
     },
     footer: 'DeepTalk · English, naturally.',
-    footerLink: '进入应用',
     termsLabel: '用户协议',
     privacyLabel: '隐私政策',
     langLabel: '语言'
@@ -258,7 +257,6 @@ const COPY = {
       ctaButton: 'Open DeepTalk'
     },
     footer: 'DeepTalk · English, naturally.',
-    footerLink: 'Open the app',
     termsLabel: 'Terms of Service',
     privacyLabel: 'Privacy Policy',
     langLabel: 'Language'
@@ -300,9 +298,9 @@ const initialLang = () => {
     const saved = localStorage.getItem(LANG_KEY);
     if (saved === 'zh' || saved === 'en') return saved;
   } catch {
-    /* private mode — fall through to the browser language */
+    /* storage unavailable — fall through to the default */
   }
-  return (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  return 'zh'; // Chinese first; the toggle still lets readers switch to English
 };
 
 /* ---------- page ---------- */
@@ -558,7 +556,6 @@ function App() {
       <footer className="footer footer-legal">
         <span>{t.footer}</span>
         <span className="footer-links">
-          <a href={APP_URL}>{t.footerLink}</a>
           <a href={APP_URL + 'terms'}>{t.termsLabel}</a>
           <a href={APP_URL + 'privacy'}>{t.privacyLabel}</a>
         </span>

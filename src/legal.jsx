@@ -265,9 +265,9 @@ const initialLang = () => {
     const saved = localStorage.getItem(LANG_KEY);
     if (saved === 'zh' || saved === 'en') return saved;
   } catch {
-    /* private mode — fall through to the browser language */
+    /* storage unavailable — fall through to the default */
   }
-  return (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  return 'zh'; // Chinese first; the toggle still lets readers switch to English
 };
 
 /* ---------- page ---------- */

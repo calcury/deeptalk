@@ -436,6 +436,10 @@ main { flex: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 22px;
 
 .footer a { color: var(--green-dark); }
 
+/* Footer cross-links — shared by the about page and the legal pages. */
+.footer-links { display: flex; flex-wrap: wrap; gap: 6px 26px; }
+.footer-links a:hover { border-bottom: 1px solid #c9d6bf; }
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 900px) {
@@ -463,6 +467,7 @@ main { flex: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 22px;
   .table-hint { display: block; font-size: 11px; color: #a9ada4; text-align: center; margin-top: 9px; }
   .cta { flex-direction: column; align-items: flex-start; }
   .footer { padding: 18px 14px; }
+  .footer-legal { flex-direction: column; align-items: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {
