@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs and caches
+*.log
+npm-debug.log*
+.cache/
+.temp/
+
+# Local test coverage
+coverage/
