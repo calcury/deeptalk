@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, ChevronDown, Coins, MessageCircle, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Sparkles, Trash2, X } from 'lucide-react';
+import { BookOpen, ChevronDown, Coins, MessageCircle, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Trash2, X } from 'lucide-react';
 import Avatar from './Avatar.jsx';
 import { shortDate } from '../lib/utils.js';
 
@@ -27,10 +27,8 @@ export default function Sidebar({
   return (
     <aside className={'sidebar' + (mobileOpen ? ' open' : '')}>
       <div className="brand">
-        <div className="brand-mark">
-          <Sparkles size={18} />
-        </div>
-        <span className="brand-text collapse-hide">deeptalk</span>
+        <div className="brand-mark" aria-hidden="true">D</div>
+        <span className="brand-text collapse-hide">DeepTalk</span>
         <span className="beta collapse-hide">BETA</span>
         <button className="icon-btn ghost collapse-btn" onClick={toggleCollapse} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}

@@ -1,4 +1,4 @@
-// Tiny localStorage helpers. Everything deeptalk stores stays in the browser.
+// Tiny localStorage helpers. Everything DeepTalk stores stays in the browser.
 
 export const KEYS = {
   settings: 'deeptalk-settings',

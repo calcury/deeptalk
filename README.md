@@ -1,4 +1,4 @@
-# deeptalk
+# DeepTalk
 
 > English, naturally.
 

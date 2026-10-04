@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600&family=Quicksand:wght@700&display=swap');
 
 :root {
   --bg: #f7f7f4;
@@ -144,6 +144,13 @@ button { cursor: pointer; border: 0; background: none; color: inherit; }
   color: #fff;
   display: grid;
   place-items: center;
+  /* Rounded "D" wordmark — Quicksand is the soft geometric face. */
+  font-family: 'Quicksand', 'DM Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  padding-bottom: 1px;
 }
 
 .brand-text { flex: 1; white-space: nowrap; }
@@ -595,7 +602,7 @@ h1 {
 
 .table-card, .usage-hero, .note { background: #fff; border: 1px solid var(--line); border-radius: 12px; }
 
-.outline-btn { border: 1px solid var(--line); background: #fff; padding: 9px 12px; border-radius: 7px; font-size: 11px; color: #777; display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.outline-btn { border: 1px solid var(--line); background: #fff; padding: 9px 12px; border-radius: 7px; font-size: 11px; color: #777; display: flex; gap: 6px; align-items: center; white-space: nowrap; text-decoration: none; }
 .outline-btn:hover { border-color: #cfd8c9; color: var(--ink); }
 .outline-btn.danger { color: var(--danger); }
 .outline-btn.danger:hover { background: #fdf3f1; border-color: #e6c9c4; }

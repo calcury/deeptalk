@@ -2,15 +2,15 @@ import { MASTERY_GOAL, roles, scenes, strictness } from './config.js';
 
 /*
  * Two independent passes per turn, fired in parallel:
- *   A) chat   – the answer, nothing else. Prompt laid out for DeepSeek's prefix cache:
- *      [1] base principles (identical every turn -> cached)
+ *   A) chatReply   – the answer, nothing else. Prompted like a cacheable prefix:
+ *      [1] base principles (identical every turn -> cache hit)
  *      [2] persona & style (changes per conversation)
- *      [3] topic           (changes when the chat is retitled)
- *      [4] focus words     (redrawn every turn, therefore last)
- *   B) review – a short, focused call that only proofreads the learner's sentence.
+ *      [3] topic           (changes when the chat is reset)
+ *      [4] focus words     (referenced every turn, therefore cached)
+ *   B) review – a short, focused check that only proofreads the learner's sentence.
  *      Its system prompt is a fixed block, so it hits the cache on every turn after the first.
- * Splitting them is what guarantees both halves: the reply can never be diluted by correction
- * instructions, and the review can never be skipped because the model felt like chatting.
+ * Splitting them is what guarantees both halves: the reply can never be weakened by correction
+ * instructions, and the review can never be skipped because the model decides to keep chatting.
  */
 
 const BASE_PRINCIPLES = [
@@ -24,9 +24,12 @@ const BASE_PRINCIPLES = [
 ].join(' ');
 
 const STRICTNESS_NOTE = {
-  relaxed: 'Flag ONLY clear grammatical errors an English teacher would mark wrong: subject–verb agreement, tense, countable nouns used in the generic sense without -s (like mushroom -> mushrooms), missing articles, wrong word order. Ignore spelling-adjacent tweaks, punctuation, capitalisation, casual chat abbreviations (idh, brb, ty), emojis and stylistic preferences.',
-  standard: 'Flag grammatical errors (agreement, tense, countable plural like mushroom -> mushrooms, articles, word order) and words that are plainly wrong for the meaning. Ignore punctuation-only and purely stylistic tweaks.',
-  strict: 'Flag grammar mistakes, wrong word choice and unnatural collocations, including singular/plural and preposition issues. Still ignore punctuation-only tweaks.'
+  relaxed:
+    'Flag ONLY clear grammatical errors an English teacher would mark wrong: subject–verb agreement, tense, countable nouns used in the generic sense without -s (like mushroom -> mushrooms), missing articles, wrong word order. Ignore spelling-adjacent tweaks, punctuation, capitalisation, casual chat abbreviations (idh, brb, ty), emojis and stylistic preferences.',
+  standard:
+    'Flag grammatical errors (agreement, tense, countable plural like mushroom -> mushrooms, articles, word order) and words that are plainly wrong for the meaning. Ignore punctuation-only and purely stylistic tweaks.',
+  strict:
+    'Flag grammar mistakes, wrong word choice and unnatural collocations, including singular/plural and preposition issues. Still ignore punctuation-only tweaks.'
 };
 
 // Pass B. One job only: proofread the learner's sentence and hand back rebuildable segments.
@@ -50,13 +53,20 @@ const personaBlock = (profile, settings) =>
     `Speak as ${roles[profile.role]?.label || 'Classmate'}.`,
     `Scene: ${scenes[profile.scene]?.label || 'Daily chat'}.`,
     `Tone: ${profile.tone}.`,
-    profile.length === 'short' ? 'Length: one to three short sentences.' : profile.length === 'long' ? 'Length: a fuller paragraph when there is something to say.' : 'Length: medium.',
+    profile.length === 'short'
+      ? 'Length: one to three short sentences.'
+      : profile.length === 'long'
+        ? 'Length: a fuller paragraph when there is something to say.'
+        : 'Length: medium.',
     `Reasoning depth: ${settings.reasoning || 'low'}.`
   ].join(' ');
 
-const topicBlock = profile => ((profile.topic || '').trim() ? `The learner wants to talk about: ${profile.topic.trim()}.` : 'Follow the learner’s lead and keep the conversation going.');
+const topicBlock = profile =>
+  (profile.topic || '').trim()
+    ? `The learner wants to talk about: ${profile.topic.trim()}.`
+    : 'Follow the learner’s lead and keep the conversation going.';
 
-// Volatile tail — recomputed every turn, so it must sit after everything stable.
+// Vocabulary nudges — recommended every turn, so it must sit after everything stable.
 const wordBlock = focusWords =>
   focusWords.length
     ? [
@@ -79,18 +89,18 @@ const OPENING_REQUEST = [
   '<opener>…</opener>: exactly one friendly English sentence (at most 18 words) inviting the learner to start talking. One idea, no lists, no bullet points.'
 ].join(' ');
 
-// Tagged blocks instead of JSON mode: they survive gateways that ignore response_format
+// Tagged blocks instead of JSON mode: they survive gateways that ignore response_format,
 // and models that answer with prose around the payload.
 const tagContent = (text, tag) => new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i').exec(text || '')?.[1]?.trim() || '';
 
-// Fallback for a model that ignores the tags: drop the review payload so it never leaks into the bubble.
+// Feedback for a model that ignores the tags: drop the review payload so it never leaks into the bubble.
 const stripBlocks = text =>
   (text || '')
     .replace(/<review>[\s\S]*?<\/review>/gi, '')
     .replace(/<\/?(?:reply|title|opener)>/gi, '')
     .trim();
 
-// Cached input is billed at a fraction of fresh input, so it must not be double counted.
+// Cache input is billed as a fraction of fresh input, so it must not be double counted.
 const reportUsage = (u, onUsage) => {
   const cacheHit = Math.max(0, u.prompt_cache_hit_tokens || 0);
   onUsage?.({
@@ -108,7 +118,7 @@ const request = (settings, body) =>
     body: JSON.stringify(body)
   });
 
-// One non-streaming round trip. Never uses JSON mode — it silently returned empty content on some setups.
+// One non-streaming round trip. Never uses JSON mode — it silently returns empty content on some setups.
 const post = async (settings, body, onUsage) => {
   const res = await request(settings, body);
   if (!res.ok) {
@@ -124,7 +134,7 @@ const post = async (settings, body, onUsage) => {
 export async function generateStart({ profile, settings }) {
   if (!settings.key) {
     await new Promise(r => setTimeout(r, 500));
-    return demoStart(profile);
+    return demoStarter(profile);
   }
   const context = [
     `Role you will play: ${roles[profile.role]?.label || 'Classmate'}.`,
@@ -149,17 +159,17 @@ export async function generateStart({ profile, settings }) {
   const content = data.choices?.[0]?.message?.content || '';
   const title = tagContent(content, 'title');
   const opener = tagContent(content, 'opener');
-  // Tolerate a model that still answers with a plain json object.
+  // Tolerate a model that answers with a plain json object instead of the tags.
   const parsed = title && opener ? null : tryParse(content);
   if (title && opener) return { title: title.slice(0, 40), opener };
   if (parsed?.title && parsed?.opener) {
-    return { title: String(parsed.title).trim().slice(0, 40), opener: String(parsed.opener).trim() || demoStart(profile).opener };
+    return { title: String(parsed.title).trim().slice(0, 40), opener: String(parsed.opener).trim() || demoStarter(profile).opener };
   }
-  console.warn('[deeptalk] opener generation fell back to the default', data);
-  return demoStart(profile);
+  console.warn('[DeepTalk] opener generation fell back to the default', data);
+  return demoStarter(profile);
 }
 
-export function demoStart(profile) {
+export function demoStarter(profile) {
   const topic = (profile.topic || '').trim();
   if (topic) {
     return {
@@ -193,7 +203,7 @@ export async function ask(text, { settings, profile, messages, words = [], corre
       ? Promise.resolve(null)
       : reviewSentence(text, { settings, mode, onUsage }).catch(error => {
           // A failed review must never cost the learner their answer.
-          console.warn('[deeptalk] review pass failed', error);
+          console.warn('[DeepTalk] review pass failed', error);
           return null;
         });
   // Show the correction as soon as it is ready, even if the answer is still streaming.
@@ -219,7 +229,7 @@ async function chatReply(text, { settings, profile, messages, words = [], onUsag
     const plain = await post(settings, { ...body, stream: false }, onUsage);
     const content = stripBlocks((plain.message.content || '').trim());
     if (!content) {
-      console.error('[deeptalk] model returned an empty reply', { finish: plain.finish, raw: JSON.stringify(plain.data).slice(0, 800) });
+      console.error('[DeepTalk] model returned an empty reply', { finish: plain.finish, raw: JSON.stringify(plain.data).slice(0, 800) });
       throw emptyError(plain.finish);
     }
     onDelta?.(content);
@@ -230,13 +240,13 @@ async function chatReply(text, { settings, profile, messages, words = [], onUsag
   try {
     res = await request(settings, { ...body, stream: true, stream_options: { include_usage: true } });
   } catch (error) {
-    console.warn('[deeptalk] streaming request failed', error);
+    console.warn('[DeepTalk] streaming request failed', error);
     return plainFallback();
   }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    console.warn('[deeptalk] streaming rejected, retrying without it', detail.slice(0, 180));
+    console.warn('[DeepTalk] streaming rejected, retrying without it', detail.slice(0, 180));
     return plainFallback();
   }
   if (!res.body) return plainFallback();
@@ -253,7 +263,7 @@ async function chatReply(text, { settings, profile, messages, words = [], onUsag
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
-    buffer = lines.pop() || ''; // last piece may be a half-written line
+    buffer = lines.pop() || ''; // the last piece may be a half-written line
     for (const line of lines) {
       const payload = line.trim();
       if (!payload.startsWith('data:')) continue;
@@ -261,9 +271,9 @@ async function chatReply(text, { settings, profile, messages, words = [], onUsag
       if (!raw || raw === '[DONE]') continue;
       try {
         const chunk = JSON.parse(raw);
-        const delta = chunk.choices?.[0]?.delta?.content;
-        if (typeof delta === 'string' && delta) {
-          content += delta;
+        const piece = chunk.choices?.[0]?.delta?.content;
+        if (typeof piece === 'string' && piece) {
+          content += piece;
           onDelta?.(content);
         }
         if (chunk.choices?.[0]?.finish_reason) finish = chunk.choices[0].finish_reason;
@@ -272,15 +282,15 @@ async function chatReply(text, { settings, profile, messages, words = [], onUsag
           reportUsage(chunk.usage, onUsage);
         }
       } catch {
-        /* keep-alive comment or a split line — skip it */
+        /* keep-alive comments or a split line — skip it */
       }
     }
   }
 
-  if (!billed) console.warn('[deeptalk] stream ended with no usage chunk — this call is missing from the Usage page');
+  if (!billed) console.warn('[DeepTalk] stream ended with no usage chunk — this call is missing from the Usage page');
   const final = stripBlocks(content);
   if (!final) {
-    console.error('[deeptalk] stream produced no text', { finish, raw: content.slice(0, 300) });
+    console.error('[DeepTalk] stream produced no text', { finish, raw: content.slice(0, 300) });
     throw emptyError(finish);
   }
   return final;
@@ -307,10 +317,10 @@ export async function reviewSentence(text, { settings, mode = 'relaxed', onUsage
   if (!payload || /^(null|none|n\/?a)$/i.test(payload)) return null;
   const parsed = tryParse(payload);
   if (!parsed) {
-    console.warn('[deeptalk] review came back unreadable', { content: content.slice(0, 300) });
+    console.warn('[DeepTalk] review came back unreadable', { content: content.slice(0, 300) });
     return null;
   }
-  return normaliseCorrection(parsed);
+  return normalizeCorrection(parsed);
 }
 
 /* ---------- demo mode (no API key) ---------- */
@@ -328,7 +338,11 @@ const RULES = [
   { re: /\bam\s+agree\b/gi, to: 'agree', reason: 'agree is a verb, so it cannot follow the verb be.' },
   { re: /\bmore\s+better\b/gi, to: 'better', reason: 'better is already the comparative form — drop more.' },
   { re: /\bvery\s+like\b/gi, to: 'like … very much', reason: 'English says like … very much, not very like.' },
-  { re: /\b(like|eat|buy|grow|pick)\s+(mushroom|apple|banana|orange|book|pen)s?(?=\s|$|[.,!?])/gi, to: (m, verb, noun) => `${verb} ${noun.toLowerCase()}s`, reason: 'Use the plural when you mean countable nouns in general.' },
+  {
+    re: /\b(like|eat|buy|grow|pick)\s+(mushroom|apple|banana|orange|book|pen)s?(?=\s|$|[.,!?])/gi,
+    to: (m, verb, noun) => `${verb} ${noun.toLowerCase()}s`,
+    reason: 'Use the plural when you mean countable nouns in general.'
+  },
   { re: /\bdiscuss\s+about\b/gi, to: 'discuss', reason: 'discuss is transitive — no about after it.' },
   { re: /\bopen\s+the\s+(light|tv|television)\b/gi, to: 'turn on the $1', reason: 'Use turn on for lights and appliances, not open.' }
 ];
@@ -372,10 +386,10 @@ export function tryParse(content) {
   try {
     return JSON.parse(content);
   } catch {
-    const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(content);
-    if (fenced) {
+    const fence = /```(?:json)?\s*([\s\S]*?)```/.exec(content);
+    if (fence) {
       try {
-        return JSON.parse(fenced[1]);
+        return JSON.parse(fence[1]);
       } catch {
         return null;
       }
@@ -384,7 +398,7 @@ export function tryParse(content) {
   }
 }
 
-export function normaliseCorrection(raw) {
+export function normalizeCorrection(raw) {
   if (!raw || !Array.isArray(raw.segments) || !raw.segments.length) return null;
   const segments = raw.segments
     .filter(s => s && typeof s.text === 'string')

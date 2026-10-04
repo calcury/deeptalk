@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f7f4" />
+    <link
+      rel="icon" type="image/x-icon"
+      href="./src/icon/deeptalk.ico"
+    />
+    <title>DeepTalk — 用真实对话练英语</title>
+    <meta
+      name="description"
+      content="DeepTalk 是一个只活在你浏览器里的英语口语练习应用：AI 陪聊、逐句批改、生词加权复习、按官方价估算用量。默认接入 DeepSeek，也兼容任意 OpenAI 格式端点。"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <!--
+      Same page as about/index.html, reachable without the trailing slash.
+      Static hosts resolve /deeptalk/about to either about.html or about/index.html —
+      keeping both means the URL works whichever one the host prefers.
+    -->
+    <script type="module" src="/src/about.jsx"></script>
+  </body>
+</html>

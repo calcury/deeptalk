@@ -301,11 +301,14 @@ export default function App() {
               <h1>{active?.title || 'Conversation'}</h1>
             </div>
           )}
-          <div className="header-actions">
-            <button className="icon-btn accent" onClick={() => setShowNew(true)} title="New conversation" aria-label="New conversation">
-              <Plus size={18} />
-            </button>
-          </div>
+          {/* Starting a conversation only makes sense from the chat view. */}
+          {tab === 'chat' && (
+            <div className="header-actions">
+              <button className="icon-btn accent" onClick={() => setShowNew(true)} title="New conversation" aria-label="New conversation">
+                <Plus size={18} />
+              </button>
+            </div>
+          )}
         </header>
 
         {tab === 'chat' && (

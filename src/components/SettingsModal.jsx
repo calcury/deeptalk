@@ -1,9 +1,13 @@
 import React, { useRef, useState } from 'react';
-import { Brain, Cpu, Database, ImagePlus, Pencil, RotateCcw, SlidersHorizontal, Trash2, Upload, UserRound } from 'lucide-react';
+import { Brain, Cpu, Database, ExternalLink, ImagePlus, Info, Pencil, RotateCcw, ShieldCheck, SlidersHorizontal, Trash2, Upload, UserRound } from 'lucide-react';
 import Modal from './Modal.jsx';
 import Avatar from './Avatar.jsx';
 import { correctionsEnabled, currencies, lengths, reasoning, roles, scenes, settingsDefaults, strictness, tones } from '../lib/config.js';
 import { fileToAvatar } from '../lib/utils.js';
+
+// The static pages live beside the app under the same base path.
+const BASE = import.meta.env.BASE_URL;
+const PAGES = { about: `${BASE}about`, terms: `${BASE}terms`, privacy: `${BASE}privacy` };
 
 const sections = [
   { id: 'general', label: 'General', icon: <SlidersHorizontal size={15} /> },
@@ -11,7 +15,8 @@ const sections = [
   { id: 'reasoning', label: 'Reasoning', icon: <Brain size={15} /> },
   { id: 'persona', label: 'Persona', icon: <UserRound size={15} /> },
   { id: 'account', label: 'Account', icon: <Pencil size={15} /> },
-  { id: 'data', label: 'Data', icon: <Database size={15} /> }
+  { id: 'data', label: 'Data', icon: <Database size={15} /> },
+  { id: 'about', label: 'About & legal', icon: <Info size={15} /> }
 ];
 
 export default function SettingsModal({ settings, setSettings, account, setAccount, initialSection = 'general', onClose, onDataAction, notify }) {
@@ -282,6 +287,41 @@ export default function SettingsModal({ settings, setSettings, account, setAccou
                   <RotateCcw size={14} /> Restore
                 </button>
               </div>
+            </Section>
+          )}
+
+          {section === 'about' && (
+            <Section title="About & legal" note="Opens in a new tab.">
+              <div className="setting-row">
+                <div>
+                  <b>What is DeepTalk?</b>
+                  <small>Features, model support and pricing</small>
+                </div>
+                <a className="outline-btn" href={PAGES.about} target="_blank" rel="noreferrer">
+                  Open <ExternalLink size={14} />
+                </a>
+              </div>
+              <div className="setting-row">
+                <div>
+                  <b>Terms of Service</b>
+                  <small>How the app may be used</small>
+                </div>
+                <a className="outline-btn" href={PAGES.terms} target="_blank" rel="noreferrer">
+                  View <ExternalLink size={14} />
+                </a>
+              </div>
+              <div className="setting-row">
+                <div>
+                  <b>Privacy Policy</b>
+                  <small>What data is touched, and where it goes</small>
+                </div>
+                <a className="outline-btn" href={PAGES.privacy} target="_blank" rel="noreferrer">
+                  View <ExternalLink size={14} />
+                </a>
+              </div>
+              <p className="hint-line">
+                <ShieldCheck size={13} /> DeepTalk has no backend — nothing you type is stored on a server. The full details are in the privacy policy.
+              </p>
             </Section>
           )}
         </div>
