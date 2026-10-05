@@ -144,7 +144,7 @@ export default function SettingsModal({ settings, setSettings, account, setAccou
                 API key
                 <input type="password" placeholder="sk-…" value={settings.key} onChange={e => update('key', e.target.value)} />
               </label>
-              <p className="hint-line">Without a key the app runs in demo mode with canned replies.</p>
+              <p className="hint-line">Without a key the assistant cannot reply — you will see an error instead of an answer.</p>
             </Section>
           )}
 

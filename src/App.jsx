@@ -3,6 +3,7 @@ import { Check, Menu, Plus } from 'lucide-react';
 import Sidebar from './components/Sidebar.jsx';
 import Chat from './components/Chat.jsx';
 import NewConversationModal from './components/NewConversationModal.jsx';
+import Onboarding from './components/Onboarding.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import { Usage, Words } from './components/Pages.jsx';
 import { accountDefaults, correctionsEnabled, costOf, profileDefaults, settingsDefaults, usageDefaults } from './lib/config.js';
@@ -14,9 +15,11 @@ export default function App() {
   const [tab, setTab] = useState('chat');
   const [settings, setSettings] = useState(() => loadObject(KEYS.settings, settingsDefaults));
   const [account, setAccount] = useState(() => loadObject(KEYS.account, accountDefaults));
+  // No stored conversations means a first run — stay empty. An empty list is exactly what
+  // shows the onboarding screen, and starting or deleting a conversation flips it.
   const [conversations, setConversations] = useState(() => {
     const stored = loadRaw(KEYS.conversations, null);
-    return Array.isArray(stored) && stored.length ? normaliseConversations(stored) : [makeConversation(profileDefaults, 'Alex', 0)];
+    return Array.isArray(stored) && stored.length ? normaliseConversations(stored) : [];
   });
   const [currentId, setCurrentId] = useState(() => loadRaw(KEYS.current, null));
   const [usage, setUsage] = useState(() => ({ ...usageDefaults, ...(loadRaw(KEYS.usage, null) || {}) }));
@@ -105,10 +108,11 @@ export default function App() {
     try {
       const { title, opener } = await generateStart({ profile: nextProfile, settings });
       patchConversation(conversation.id, { title: title || 'New conversation', messages: [{ role: 'assistant', text: opener, time: now() }] });
-    } catch {
-      const fallback = makeConversation(nextProfile, settings.personaName, 1);
-      patchConversation(conversation.id, { title: fallback.title, messages: fallback.messages });
-      notify('Could not reach the model, started with a default opener');
+    } catch (e) {
+      // No canned stand-in: report what actually went wrong, in the chat, where it is seen.
+      patchConversation(conversation.id, {
+        messages: [{ role: 'assistant', text: e.message || 'Request failed — check your API settings and try again.', time: now(), error: true }]
+      });
     } finally {
       setStartingId(current => (current === conversation.id ? null : current));
     }
@@ -125,14 +129,9 @@ export default function App() {
     setLoading(false);
     setOpenCorrections([]);
     const rest = conversations.filter(c => c.id !== id);
-    if (rest.length) {
-      setConversations(rest);
-      if (id === activeId) setCurrentId(rest[0].id);
-    } else {
-      const fresh = makeConversation(lastProfile, settings.personaName, 1);
-      setConversations([fresh]);
-      setCurrentId(fresh.id);
-    }
+    // Deliberately no auto-replacement: emptying the list is what brings the onboarding back.
+    setConversations(rest);
+    if (id === activeId) setCurrentId(rest[0]?.id ?? null);
     notify('Conversation deleted');
   };
 
@@ -185,7 +184,7 @@ export default function App() {
         messages: [
           ...messages,
           userMessage,
-          { role: 'assistant', text: `Couldn't get a reply — ${e.message || 'check your API settings and try again.'}`, time: now(), error: true }
+          { role: 'assistant', text: e.message || 'Request failed — check your API settings and try again.', time: now(), error: true }
         ]
       });
     } finally {
@@ -242,9 +241,9 @@ export default function App() {
       requestId.current += 1;
       setLoading(false);
       setOpenCorrections([]);
-      const fresh = makeConversation(lastProfile, settings.personaName, 1);
-      setConversations([fresh]);
-      setCurrentId(fresh.id);
+      // Clearing everything is the same as deleting every conversation — onboarding comes back.
+      setConversations([]);
+      setCurrentId(null);
       notify('Conversations cleared');
     }
     if (action === 'words') {
@@ -267,6 +266,45 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // First run — or every conversation deleted: the whole workspace gives way to the two-step
+  // setup screen. Starting a conversation creates one, so it stays away from then on.
+  if (conversations.length === 0) {
+    return (
+      <>
+        <Onboarding
+          settings={settings}
+          setSettings={setSettings}
+          onPick={() => setShowNew(true)}
+          onOpenSettings={() => setSettingsSection('model')}
+        />
+
+        {showNew && (
+          <NewConversationModal initialProfile={newProfile(settings)} onClose={() => setShowNew(false)} onCreate={startConversation} />
+        )}
+
+        {settingsSection && (
+          <SettingsModal
+            settings={settings}
+            setSettings={setSettings}
+            account={account}
+            setAccount={setAccount}
+            initialSection={settingsSection}
+            onClose={() => setSettingsSection(null)}
+            onDataAction={runDataAction}
+            notify={notify}
+          />
+        )}
+
+        {toast && (
+          <div className="toast">
+            <Check size={15} />
+            {toast}
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className={'app' + (settings.sidebarCollapsed ? ' collapsed' : '') + (mobileOpen ? ' mobile-open' : '')}>

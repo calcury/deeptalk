@@ -1,13 +1,40 @@
 import React, { useState } from 'react';
-import { Bot, GraduationCap, MessageCircle, Plus, Sparkles, Users } from 'lucide-react';
+import { Bot, Briefcase, GraduationCap, Home, MessageCircle, Plus, Shuffle, Sparkles, Stethoscope, Users, UtensilsCrossed } from 'lucide-react';
 import Modal from './Modal.jsx';
-import { roles, scenes, tones, lengths } from '../lib/config.js';
+import { lengths, roles, sampleTopics, scenes, tones, topicsFor } from '../lib/config.js';
 
-const roleIcons = { classmate: <Users size={17} />, teacher: <GraduationCap size={17} />, friend: <MessageCircle size={17} />, interviewer: <Bot size={17} /> };
+const SUGGESTION_COUNT = 6;
+
+const roleIcons = {
+  classmate: <Users size={17} />,
+  teacher: <GraduationCap size={17} />,
+  friend: <MessageCircle size={17} />,
+  roommate: <Home size={17} />,
+  colleague: <Briefcase size={17} />,
+  interviewer: <Bot size={17} />,
+  doctor: <Stethoscope size={17} />,
+  waiter: <UtensilsCrossed size={17} />
+};
 
 export default function NewConversationModal({ initialProfile, onClose, onCreate }) {
   const [profile, setProfile] = useState(initialProfile);
+  // Six random situations drawn from the selected role's library; the button re-rolls them.
+  const [suggestions, setSuggestions] = useState(() => sampleTopics(initialProfile.role, SUGGESTION_COUNT));
   const update = (key, value) => setProfile(current => ({ ...current, [key]: value }));
+
+  // Switching role swaps the whole topic library, so a suggestion from the old role would be
+  // out of place — drop it, but keep anything the learner typed themselves.
+  const pickRole = key => {
+    setProfile(current => ({
+      ...current,
+      role: key,
+      topic: topicsFor(current.role).includes(current.topic) ? '' : current.topic
+    }));
+    setSuggestions(sampleTopics(key, SUGGESTION_COUNT));
+  };
+
+  // Excluding what is already on screen guarantees the click visibly changes the set.
+  const shuffle = () => setSuggestions(current => sampleTopics(profile.role, SUGGESTION_COUNT, current));
 
   return (
     <Modal
@@ -25,8 +52,8 @@ export default function NewConversationModal({ initialProfile, onClose, onCreate
         <div className="field-label">Who are you talking to?</div>
         <div className="option-grid">
           {Object.entries(roles).map(([key, value]) => (
-            <button key={key} className={'option-card' + (profile.role === key ? ' selected' : '')} onClick={() => update('role', key)}>
-              <span className="option-icon">{roleIcons[key]}</span>
+            <button key={key} className={'option-card' + (profile.role === key ? ' selected' : '')} onClick={() => pickRole(key)}>
+              <span className="option-icon">{roleIcons[key] || <Users size={17} />}</span>
               <b>{value.label}</b>
               <small>{value.hint}</small>
             </button>
@@ -44,14 +71,35 @@ export default function NewConversationModal({ initialProfile, onClose, onCreate
             </button>
           ))}
         </div>
-        <label className="stacked">
+      </div>
+
+      <div className="field-block">
+        <div className="field-label">
           Topic <span className="optional">optional</span>
+        </div>
+        <div className="topic-row">
           <input
             value={profile.topic}
             onChange={e => update('topic', e.target.value)}
             placeholder="e.g. weekend plans, my roommate, job interview…"
           />
-        </label>
+          <button type="button" className="outline-btn" onClick={shuffle} title="Show six more random ideas">
+            <Shuffle size={13} /> Surprise me
+          </button>
+        </div>
+        {/* Six random situations from this role's library — tap one to use it. */}
+        <div className="topic-chips">
+          {suggestions.map(topic => (
+            <button
+              key={topic}
+              type="button"
+              className={'topic-chip' + (profile.topic === topic ? ' on' : '')}
+              onClick={() => update('topic', topic)}
+            >
+              {topic}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="two-col">

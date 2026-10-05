@@ -111,31 +111,58 @@ const reportUsage = (u, onUsage) => {
   });
 };
 
-const request = (settings, body) =>
-  fetch(settings.endpoint.replace(/\/$/, '') + '/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.key}` },
-    body: JSON.stringify(body)
-  });
+const endpointOf = settings => (settings.endpoint || '').replace(/\/$/, '') + '/v1/chat/completions';
+
+// A rejected fetch means the request never reached the provider — say that plainly instead of
+// letting a bare "Failed to fetch" through.
+const request = async (settings, body) => {
+  try {
+    return await fetch(endpointOf(settings), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.key}` },
+      body: JSON.stringify(body)
+    });
+  } catch {
+    throw new Error(`Network error — could not reach ${settings.endpoint || 'the API'}. Check your connection and try again.`);
+  }
+};
+
+// No key means no request at all — report it up front rather than faking a reply.
+const requireKey = settings => {
+  if (!(settings?.key || '').trim()) {
+    throw new Error('No API key set. Add your DeepSeek key in Settings (bottom left), then try again.');
+  }
+};
+
+// Turn a failed response into one plain sentence the learner can act on.
+const errorFromResponse = async res => {
+  const raw = await res.text().catch(() => '');
+  let note = raw;
+  try {
+    const parsed = JSON.parse(raw);
+    note = parsed?.error?.message || parsed?.message || raw;
+  } catch {
+    /* not JSON — keep the raw body */
+  }
+  const tail = note ? ` — ${String(note).slice(0, 160)}` : '';
+  if (res.status === 401 || res.status === 403) return new Error(`Invalid API key (HTTP ${res.status}). Check the key in Settings.${tail}`);
+  if (res.status === 402) return new Error(`Not enough balance on this account (HTTP 402).${tail}`);
+  if (res.status === 429) return new Error(`Too many requests (HTTP 429). Wait a moment and try again.${tail}`);
+  if (res.status >= 500) return new Error(`The API had a server error (HTTP ${res.status}). Try again.${tail}`);
+  return new Error(`Request failed (HTTP ${res.status}).${tail}`);
+};
 
 // One non-streaming round trip. Never uses JSON mode — it silently returns empty content on some setups.
 const post = async (settings, body, onUsage) => {
   const res = await request(settings, body);
-  if (!res.ok) {
-    // Surface the provider's own message — "API 401" alone never says what is wrong.
-    const detail = await res.text().catch(() => '');
-    throw new Error(`API ${res.status}${detail ? ` — ${detail.slice(0, 180)}` : ''}`);
-  }
+  if (!res.ok) throw await errorFromResponse(res);
   const data = await res.json();
   reportUsage(data.usage || {}, onUsage);
   return { data, message: data.choices?.[0]?.message || {}, finish: data.choices?.[0]?.finish_reason || 'unknown' };
 };
 
 export async function generateStart({ profile, settings }) {
-  if (!settings.key) {
-    await new Promise(r => setTimeout(r, 500));
-    return demoStarter(profile);
-  }
+  requireKey(settings);
   const context = [
     `Role you will play: ${roles[profile.role]?.label || 'Classmate'}.`,
     `Scene: ${scenes[profile.scene]?.label || 'Daily chat'}.`,
@@ -163,37 +190,16 @@ export async function generateStart({ profile, settings }) {
   const parsed = title && opener ? null : tryParse(content);
   if (title && opener) return { title: title.slice(0, 40), opener };
   if (parsed?.title && parsed?.opener) {
-    return { title: String(parsed.title).trim().slice(0, 40), opener: String(parsed.opener).trim() || demoStarter(profile).opener };
+    return { title: String(parsed.title).trim().slice(0, 40), opener: String(parsed.opener).trim() };
   }
-  console.warn('[DeepTalk] opener generation fell back to the default', data);
-  return demoStarter(profile);
-}
-
-export function demoStarter(profile) {
-  const topic = (profile.topic || '').trim();
-  if (topic) {
-    return {
-      title: topic.split(/\s+/).slice(0, 4).join(' '),
-      opener: `Alright, let’s talk about ${topic} — what got you thinking about it?`
-    };
-  }
-  return { title: scenes[profile.scene]?.label || 'Free chat', opener: 'Hey! What shall we chat about today?' };
+  console.error('[DeepTalk] opener generation returned nothing usable', data);
+  throw new Error('The model did not return a usable opening line. Try again, or check the model name in Settings.');
 }
 
 /* ---------- chat ---------- */
 
 export async function ask(text, { settings, profile, messages, words = [], corrections = true, onUsage, onDelta, onCorrection }) {
-  if (!settings.key) {
-    await new Promise(r => setTimeout(r, 700));
-    const demo = demoReply(text, corrections);
-    // Fake a little typing so demo mode feels the same as the real thing.
-    const parts = demo.text.split(' ');
-    for (let i = 1; i <= parts.length; i += 1) {
-      onDelta?.(parts.slice(0, i).join(' '));
-      await new Promise(r => setTimeout(r, 40));
-    }
-    return demo;
-  }
+  requireKey(settings);
 
   const mode = corrections ? settings.correctionStrictness || 'relaxed' : 'off';
 
@@ -245,8 +251,10 @@ async function chatReply(text, { settings, profile, messages, words = [], onUsag
   }
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    console.warn('[DeepTalk] streaming rejected, retrying without it', detail.slice(0, 180));
+    const error = await errorFromResponse(res);
+    // Auth, quota and rate-limit problems will not be fixed by dropping the stream — report them now.
+    if ([401, 402, 403, 429].includes(res.status)) throw error;
+    console.warn('[DeepTalk] streaming rejected, retrying without it', error.message);
     return plainFallback();
   }
   if (!res.body) return plainFallback();
@@ -321,63 +329,6 @@ export async function reviewSentence(text, { settings, mode = 'relaxed', onUsage
     return null;
   }
   return normalizeCorrection(parsed);
-}
-
-/* ---------- demo mode (no API key) ---------- */
-
-export function demoReply(text, corrections = true) {
-  const q = text.toLowerCase();
-  let reply = `That’s interesting! Tell me more about “${text.slice(0, 42)}${text.length > 42 ? '…' : ''}”.`;
-  if (q.includes('hello') || q.includes('hi')) reply = 'Hey! Nice to see you. How’s your day going?';
-  if (q.includes('study') || q.includes('school')) reply = 'That sounds productive! What are you working on right now?';
-  return { text: reply, correction: corrections ? heuristicCorrection(text) : null };
-}
-
-const RULES = [
-  { re: /\bI\s+has\b/g, to: 'I have', reason: 'Use have with I; has is only for third person singular.' },
-  { re: /\bam\s+agree\b/gi, to: 'agree', reason: 'agree is a verb, so it cannot follow the verb be.' },
-  { re: /\bmore\s+better\b/gi, to: 'better', reason: 'better is already the comparative form — drop more.' },
-  { re: /\bvery\s+like\b/gi, to: 'like … very much', reason: 'English says like … very much, not very like.' },
-  {
-    re: /\b(like|eat|buy|grow|pick)\s+(mushroom|apple|banana|orange|book|pen)s?(?=\s|$|[.,!?])/gi,
-    to: (m, verb, noun) => `${verb} ${noun.toLowerCase()}s`,
-    reason: 'Use the plural when you mean countable nouns in general.'
-  },
-  { re: /\bdiscuss\s+about\b/gi, to: 'discuss', reason: 'discuss is transitive — no about after it.' },
-  { re: /\bopen\s+the\s+(light|tv|television)\b/gi, to: 'turn on the $1', reason: 'Use turn on for lights and appliances, not open.' }
-];
-
-// Tiny offline grammar checker so the correction card is still demonstrable without a key.
-export function heuristicCorrection(text) {
-  const hits = [];
-  RULES.forEach(rule => {
-    const scoped = { ...rule, re: new RegExp(rule.re.source, rule.re.flags) };
-    let match;
-    while ((match = scoped.re.exec(text)) !== null) {
-      const replacement = typeof rule.to === 'function' ? rule.to(...match) : match[0].replace(scoped.re, rule.to);
-      const same = !replacement || replacement.toLowerCase() === match[0].toLowerCase();
-      if (same) {
-        if (match.index === scoped.re.lastIndex) scoped.re.lastIndex += 1;
-        continue;
-      }
-      hits.push({ start: match.index, end: match.index + match[0].length, to: replacement, reason: rule.reason });
-      if (match.index === scoped.re.lastIndex) scoped.re.lastIndex += 1;
-    }
-  });
-  if (!hits.length) return null;
-
-  hits.sort((a, b) => a.start - b.start);
-  const segments = [];
-  const reasons = [];
-  let cursor = 0;
-  hits.forEach(hit => {
-    if (hit.start > cursor) segments.push({ text: text.slice(cursor, hit.start) });
-    segments.push({ text: text.slice(hit.start, hit.end), replace: hit.to });
-    if (!reasons.includes(hit.reason)) reasons.push(hit.reason);
-    cursor = hit.end;
-  });
-  if (cursor < text.length) segments.push({ text: text.slice(cursor) });
-  return { segments, reasons: reasons.slice(0, 3) };
 }
 
 /* ---------- shared helpers ---------- */

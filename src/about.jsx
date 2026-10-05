@@ -146,8 +146,8 @@ const COPY = {
       title: '三步开始',
       items: {
         open: { title: '打开 DeepTalk', text: '不需要注册、不需要登录。数据全部存在你自己的浏览器里。' },
-        key: { title: '填一个 API Key', text: '左下角 Settings → Model & API，默认已指向 DeepSeek 官方地址，粘贴 Key 即可。' },
-        new: { title: '新建对话', text: '选好角色和话题，AI 会先开口。之后就用英文聊，批改会跟着你的每句话出现。' }
+        key: { title: '填一个 API Key', text: '首次打开会直接让你粘贴 Key，默认已指向 DeepSeek 官方地址；之后也能随时在左下角 Settings → Model & API 修改。' },
+        new: { title: '选角色开始对话', text: '点「Start talking」选好角色和话题，AI 会先开口。之后就用英文聊，批改会跟着你的每句话出现。' }
       },
       ctaTitle: '准备好了？',
       ctaText: '打开应用，第一句用英文说出来就行。',
@@ -249,8 +249,8 @@ const COPY = {
       title: 'Three steps',
       items: {
         open: { title: 'Open DeepTalk', text: 'No sign-up, no login. Everything lives in your own browser.' },
-        key: { title: 'Add an API key', text: 'Settings → Model & API, bottom left. It already points at DeepSeek — paste your key and you are done.' },
-        new: { title: 'Start a conversation', text: 'Choose a role and a topic; the AI speaks first. From there, just talk, and corrections follow every sentence you send.' }
+        key: { title: 'Add an API key', text: 'The welcome screen asks for it right away. It already points at DeepSeek — paste your key and you are done. You can change it later in Settings → Model & API.' },
+        new: { title: 'Pick a role and start', text: 'Hit “Start talking”, choose a role and a topic, and the AI speaks first. From there, just talk, and corrections follow every sentence you send.' }
       },
       ctaTitle: 'Ready?',
       ctaText: 'Open the app and say your first sentence in English.',
