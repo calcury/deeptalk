@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "date": "2026-10-05",
+  "notes": [
+    "First launch now walks you through adding your API key and picking a role.",
+    "Eight conversation partners: classmate, teacher, friend, roommate, colleague, interviewer, doctor and waiter.",
+    "Each role ships with 50 built-in situations — tap Surprise me to draw six fresh ones.",
+    "Failures are reported as they are. An invalid key or a network problem is shown instead of a canned reply.",
+    "The API key field is plain text, so it stays visible on phones."
+  ]
+}

@@ -1,1 +1,132 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="theme-color" content="#f7f7f4"/><link rel="icon" type="image/x-icon" href="./src/icon/deeptalk.ico"/><title>DeepTalk — English, naturally.</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f7f4" />
+    <link rel="icon" type="image/x-icon" href="./src/icon/deeptalk.ico" />
+    <title>DeepTalk — English, naturally.</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      /*
+       * Startup version check. Deliberately inline and dependency-free so it still runs when a
+       * stale app bundle is cached. On every launch it fetches version.json from the GitHub raw URL:
+       *   no cached version -> adopt it silently (first run after this feature shipped)
+       *   same version      -> do nothing
+       *   different version -> block with an update prompt, then hard-reload every asset
+       * localStorage is never cleared, so conversations, the word bank and the API key all survive.
+       */
+      (function () {
+        var VERSION_URL = 'https://raw.githubusercontent.com/calcury/deeptalk/main/version.json';
+        var STORE_KEY = 'deeptalk-version';
+
+        var escapeHtml = function (value) {
+          return String(value == null ? '' : value).replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+          });
+        };
+
+        function showUpdateGate(info, current) {
+          if (document.getElementById('dt-update-gate')) return;
+          var notes = (info.notes || []).filter(function (note) {
+            return note;
+          });
+          var notesHtml = notes.length
+            ? '<ul style="margin:0;padding-left:18px;">' +
+              notes
+                .map(function (note) {
+                  return '<li style="margin:4px 0;">' + escapeHtml(note) + '</li>';
+                })
+                .join('') +
+              '</ul>'
+            : '<p style="margin:0;">Bug fixes and small improvements.</p>';
+
+          var gate = document.createElement('div');
+          gate.id = 'dt-update-gate';
+          gate.setAttribute(
+            'style',
+            'position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;' +
+              'padding:20px;background:rgba(35,48,28,.58);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);' +
+              'font-family:"DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;'
+          );
+          gate.innerHTML =
+            '<div role="dialog" aria-modal="true" aria-labelledby="dt-update-title" dir="ltr" ' +
+            'style="width:100%;max-width:430px;box-sizing:border-box;background:#fff;border-radius:16px;' +
+            'padding:28px 26px 22px;box-shadow:0 24px 80px rgba(35,48,28,.35);">' +
+            '<div style="display:flex;align-items:center;gap:9px;margin-bottom:18px;">' +
+            '<span style="width:28px;height:28px;border-radius:9px;background:#4e704c;color:#fff;display:grid;' +
+            'place-items:center;font-weight:700;font-size:16px;line-height:1;">D</span>' +
+            '<b style="font-size:15px;color:#242622;">DeepTalk</b>' +
+            '</div>' +
+            '<h2 id="dt-update-title" style="margin:0 0 8px;font-size:22px;line-height:1.25;' +
+            'letter-spacing:-.4px;color:#242622;">A new version is ready</h2>' +
+            '<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#92958e;">You are on ' +
+            '<b style="color:#242622;">' +
+            escapeHtml(current) +
+            '</b>, the latest is <b style="color:#242622;">' +
+            escapeHtml(info.version) +
+            '</b>.</p>' +
+            '<div style="font-size:12.5px;line-height:1.6;color:#4c5249;background:#edf3e9;border:1px solid #dfe8d7;' +
+            'border-radius:10px;padding:12px 14px;margin-bottom:20px;max-height:32vh;overflow:auto;">' +
+            notesHtml +
+            '</div>' +
+            '<button id="dt-update-now" type="button" style="width:100%;border:0;cursor:pointer;background:#6f8f63;' +
+            'color:#fff;font-size:13.5px;font-weight:600;padding:12px;border-radius:9px;font-family:inherit;">Update now</button>' +
+            '<p style="margin:14px 0 0;font-size:11px;line-height:1.5;color:#a1a59c;text-align:center;">' +
+            'Your conversations, word bank and API key are kept.</p>' +
+            '</div>';
+          document.body.appendChild(gate);
+
+          document.getElementById('dt-update-now').addEventListener('click', function () {
+            // Record the new version first — otherwise the next launch would prompt all over again.
+            try {
+              localStorage.setItem(STORE_KEY, info.version);
+            } catch (e) {
+              /* private mode — the prompt will simply come back next launch */
+            }
+            // Hard reload: the cache-busting query string forces a fresh copy of this HTML, which
+            // in turn points at the new hashed JS/CSS files. No stored data is touched.
+            var url = new URL(window.location.href);
+            url.searchParams.set('v', info.version);
+            window.location.replace(url.toString());
+          });
+        }
+
+        function checkVersion() {
+          fetch(VERSION_URL, { cache: 'no-store' })
+            .then(function (res) {
+              return res.ok ? res.json() : null;
+            })
+            .then(function (info) {
+              if (!info || !info.version) return;
+              var current = null;
+              try {
+                current = localStorage.getItem(STORE_KEY);
+              } catch (e) {
+                /* storage unavailable */
+              }
+              if (!current) {
+                try {
+                  localStorage.setItem(STORE_KEY, info.version);
+                } catch (e) {
+                  /* storage unavailable */
+                }
+                return;
+              }
+              if (current === info.version) return;
+              showUpdateGate(info, current);
+            })
+            .catch(function () {
+              /* offline or blocked — never nag when the check itself fails */
+            });
+        }
+
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', checkVersion);
+        else checkVersion();
+      })();
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
