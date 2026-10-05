@@ -1,11 +1,9 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "date": "2026-10-05",
   "notes": [
-    "First launch now walks you through adding your API key and picking a role.",
-    "Eight conversation partners: classmate, teacher, friend, roommate, colleague, interviewer, doctor and waiter.",
-    "Each role ships with 50 built-in situations — tap Surprise me to draw six fresh ones.",
-    "Failures are reported as they are. An invalid key or a network problem is shown instead of a canned reply.",
-    "The API key field is plain text, so it stays visible on phones."
+    "DeepTalk now checks for a new version on every launch and tells you when one is ready.",
+    "Updating reloads the app without touching your data — conversations, word bank and the API key all stay put.",
+    "Release notes are shown before you reload, so you always know what changed."
   ]
 }
