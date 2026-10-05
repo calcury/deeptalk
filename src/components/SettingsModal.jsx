@@ -142,7 +142,18 @@ export default function SettingsModal({ settings, setSettings, account, setAccou
               </div>
               <label className="stacked">
                 API key
-                <input type="password" placeholder="sk-…" value={settings.key} onChange={e => update('key', e.target.value)} />
+                {/* Plain text, not a password field — on mobile the secure keyboard cannot show
+                    the key, which makes pasting and checking it impossible. */}
+                <input
+                  type="text"
+                  placeholder="sk-…"
+                  value={settings.key}
+                  onChange={e => update('key', e.target.value)}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                />
               </label>
               <p className="hint-line">Without a key the assistant cannot reply — you will see an error instead of an answer.</p>
             </Section>

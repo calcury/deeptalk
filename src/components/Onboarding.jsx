@@ -28,12 +28,18 @@ export default function Onboarding({ settings, setSettings, onPick, onOpenSettin
             <b>Add your API key</b>
             <small>The endpoint already points at DeepSeek — paste the key and you are done.</small>
             <div className="ob-input-wrap">
+              {/* Plain text on purpose: a password field summons the secure keyboard on mobile,
+                  which refuses to show the key while you paste or check it. */}
               <input
-                type="password"
+                type="text"
                 value={settings.key}
                 onChange={e => setSettings(s => ({ ...s, key: e.target.value }))}
                 placeholder="sk-…"
                 aria-label="API key"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
               />
               <span className={'ob-check' + (ready ? ' ok' : '')} title={ready ? 'Key ready' : 'No key yet'}>
                 <Check size={14} />
